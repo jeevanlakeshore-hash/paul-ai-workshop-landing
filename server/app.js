@@ -1,4 +1,5 @@
 import express from 'express';
+import { zohoFields, ZOHO_FORM_ACTION } from '../shared/zoho.js';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
@@ -17,6 +18,7 @@ export function createApp({ config, store, gateway, staticDir }) {
       styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', 'https://*.razorpay.com'],
       connectSrc: ["'self'", 'https://*.razorpay.com'], frameSrc: ['https://*.razorpay.com'],
       objectSrc: ["'none'"], baseUri: ["'self'"],
+      formAction: ["'self'", new URL(ZOHO_FORM_ACTION).origin],
       upgradeInsecureRequests: config.production ? [] : null,
     } },
     strictTransportSecurity: config.production ? undefined : false,
@@ -77,7 +79,7 @@ export function createApp({ config, store, gateway, staticDir }) {
   }
   function result(registration) {
     const current = store.get(registration.id);
-    return { status: current.status, registrationId: current.id, paymentId: current.payment_id, amount: current.amount, currency: 'INR' };
+    return { status: current.status, registrationId: current.id, paymentId: current.payment_id, amount: current.amount, currency: 'INR', zohoFields: zohoFields(current) };
   }
   app.post('/api/payments/verify', async (req, res) => {
     const registration = authorize(req.body);

@@ -5,6 +5,7 @@ import { createApp } from '../server/app.js';
 import { createStore } from '../server/store.js';
 import { parsePrice, validSignature, validateRegistration } from '../server/payments.js';
 import { readConfig } from '../server/config.js';
+import { ZOHO_FIELD_NAMES, ZOHO_FORM_ACTION, submitZohoForm } from '../shared/zoho.js';
 
 const attendee = { firstName: 'Test', lastName: 'Doctor', email: 'test@example.com', phone: '+91 9999999999', organization: 'Test Hospital', specialty: 'Cardiology', consent: true };
 const sign = (message, secret = 'test-secret') => createHmac('sha256', secret).update(message).digest('hex');
@@ -94,6 +95,7 @@ test('authorized payments stay pending until captured', async t => {
   h.setPayment({ status: 'authorized', captured: false });
   const result = await h.verify(order);
   assert.equal(result.status, 200); assert.equal(result.data.status, 'pending');
+  assert.equal(result.data.zohoFields, null);
 });
 test('captured payment confirms exactly once and persists its reference', async t => {
   const h = await harness(t); const order = await h.order();
@@ -143,4 +145,57 @@ test('status reconciles a missed callback directly with the gateway', async t =>
 test('unexpected cross-origin order requests are rejected', async t => {
   const h = await harness(t);
   assert.equal((await h.request('payments/orders', attendee, { origin: 'https://untrusted.example' })).status, 403);
+});
+
+
+test('verified payment populates the exact Zoho fields from stored attendee and payment data', async t => {
+  const h = await harness(t);
+  const response = await h.request('payments/orders', { ...attendee, SingleLine1: 'forged', zohoFields: { SingleLine1: 'forged' } });
+  const result = await h.verify(response.data);
+  assert.equal(result.status, 200);
+  const fields = result.data.zohoFields;
+  assert.deepEqual(Object.keys(fields), ZOHO_FIELD_NAMES);
+  assert.equal(fields.Name_First, attendee.firstName);
+  assert.equal(fields.Name_Last, attendee.lastName);
+  assert.equal(fields.Email, attendee.email);
+  assert.equal(fields.PhoneNumber_countrycode, '+919999999999');
+  assert.equal(fields.SingleLine, attendee.organization);
+  assert.equal(fields.SingleLine2, attendee.specialty);
+  assert.deepEqual(JSON.parse(fields.SingleLine1), { status: 'captured', razorpay_payment_id: 'pay_123', razorpay_order_id: response.data.orderId });
+  assert.ok(fields.SingleLine1.length <= 255);
+  assert.equal(fields.zf_referrer_name, '');
+  assert.equal(fields.zf_redirect_url, '');
+  assert.equal(fields.zc_gad, '');
+});
+
+test('a missed callback recovers Zoho form data through payment status', async t => {
+  const h = await harness(t); const order = await h.order();
+  await h.webhook({ event: 'payment.captured', payload: { payment: { entity: h.getPayment() } } });
+  const result = await h.request('payments/status', order);
+  assert.equal(JSON.parse(result.data.zohoFields.SingleLine1).status, 'captured');
+  assert.equal(result.data.zohoFields.Email, attendee.email);
+});
+
+test('Zoho form fields are filled before native submission', () => {
+  const inputs = Object.fromEntries(ZOHO_FIELD_NAMES.map(name => [name, { value: '' }]));
+  const fields = { Name_First: 'Test', Email: 'test@example.com', SingleLine1: '{"status":"captured"}' };
+  let submitted = 0;
+  submitZohoForm({
+    elements: { namedItem: name => inputs[name] },
+    submit() {
+      submitted++;
+      for (const name of ZOHO_FIELD_NAMES) assert.equal(inputs[name].value, fields[name] ?? '');
+    },
+  }, fields);
+  assert.equal(submitted, 1);
+});
+
+test('security policy allows native submission to the supplied Zoho form', async t => {
+  const h = await harness(t);
+  // Inspect the same configured middleware without making any external submissions.
+  const app = createApp({ config: h.config, store: h.store, gateway: {} });
+  const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/workshop');
+  assert.ok(response.headers.get('content-security-policy').includes("form-action 'self' " + new URL(ZOHO_FORM_ACTION).origin));
 });

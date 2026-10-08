@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, Download, LockKeyhole, ShieldCheck, X, LoaderCircle, RefreshCw } from 'lucide-react';
 import { api, loadCheckout, money } from './api.js';
 
+import { ZOHO_FORM_ACTION, ZOHO_FIELD_NAMES, submitZohoForm } from '../shared/zoho.js';
+
 const storageKey = 'clinical-workshop-registration';
 function savedRegistration() {
   try { return JSON.parse(sessionStorage.getItem(storageKey)) || null; } catch { return null; }
@@ -14,6 +16,8 @@ export default function Registration({ dialogRef, config }) {
   const [pending, setPending] = useState(savedRegistration);
   const [receipt, setReceipt] = useState(null);
   const mounted = useRef(true);
+  const zohoForm = useRef(null);
+  const submittedToZoho = useRef(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -30,6 +34,11 @@ export default function Registration({ dialogRef, config }) {
   }
   function applyStatus(result) {
     if (result.status === 'paid') {
+      if (!result.zohoFields) throw new Error('Registration details are unavailable. Please check payment status again.');
+      if (submittedToZoho.current !== result.registrationId) {
+        submitZohoForm(zohoForm.current, result.zohoFields);
+        submittedToZoho.current = result.registrationId;
+      }
       setReceipt(result); setStage('success'); setPending(null);
       try { sessionStorage.removeItem(storageKey); } catch { /* Storage is optional. */ }
     } else setStage('pending');
@@ -91,6 +100,9 @@ export default function Registration({ dialogRef, config }) {
   }
 
   return <dialog ref={dialogRef} className="registration-dialog" aria-labelledby="registration-title" onClick={e => { if (e.target === e.currentTarget && !busy) e.currentTarget.close(); }}>
+    <form ref={zohoForm} action={ZOHO_FORM_ACTION} name="form" id="form" method="POST" acceptCharset="UTF-8" encType="multipart/form-data" hidden>
+      {ZOHO_FIELD_NAMES.map(name => <input key={name} type="hidden" name={name} defaultValue="" />)}
+    </form>
     <div className="dialog-body">
       <button className="icon-button close-dialog" aria-label="Close registration" disabled={busy} onClick={() => dialogRef.current.close()}><X size={21} /></button>
       <div className="eyebrow">YOUR NEXT CHAPTER STARTS HERE</div>
@@ -131,6 +143,7 @@ export default function Registration({ dialogRef, config }) {
           </fieldset>
         </form>}
         <p className="secure-note"><LockKeyhole size={13} /> Secure checkout by Razorpay · UPI, cards & more</p>
+        <p className="fine-print">After payment is verified, your registration details will be submitted to Zoho Forms and its confirmation page will open.</p>
       </>}
     </div>
   </dialog>;
