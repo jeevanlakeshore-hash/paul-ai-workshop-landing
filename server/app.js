@@ -16,7 +16,7 @@ export function createApp({ config, store, gateway, staticDir }) {
     contentSecurityPolicy: { directives: {
       defaultSrc: ["'self'"], scriptSrc: ["'self'", 'https://checkout.razorpay.com'],
       styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', 'https://*.razorpay.com'],
-      connectSrc: ["'self'", 'https://*.razorpay.com'], frameSrc: ['https://*.razorpay.com'],
+      connectSrc: ["'self'", 'https://*.razorpay.com'], frameSrc: ['https://*.razorpay.com', new URL(ZOHO_FORM_ACTION).origin],
       objectSrc: ["'none'"], baseUri: ["'self'"],
       formAction: ["'self'", new URL(ZOHO_FORM_ACTION).origin],
       upgradeInsecureRequests: config.production ? [] : null,

@@ -5,7 +5,7 @@ import { createApp } from '../server/app.js';
 import { createStore } from '../server/store.js';
 import { parsePrice, validSignature, validateRegistration } from '../server/payments.js';
 import { readConfig } from '../server/config.js';
-import { ZOHO_FIELD_NAMES, ZOHO_FORM_ACTION, submitZohoForm } from '../shared/zoho.js';
+import { ZOHO_FIELD_NAMES, ZOHO_FORM_ACTION, ZOHO_FORM_TARGET, submitZohoForm } from '../shared/zoho.js';
 
 const attendee = { firstName: 'Test', lastName: 'Doctor', email: 'test@example.com', phone: '+91 9999999999', organization: 'Test Hospital', specialty: 'Cardiology', consent: true };
 const sign = (message, secret = 'test-secret') => createHmac('sha256', secret).update(message).digest('hex');
@@ -58,7 +58,7 @@ test('specialty remains independent from hospital and required fields are valida
   assert.equal(result.specialty, 'Cardiology'); assert.equal(result.organization, 'Test Hospital');
   for (const change of [{ specialty: '' }, { email: 'invalid' }, { phone: 'abcdefghijk' }, { consent: false }]) assert.throws(() => validateRegistration({ ...attendee, ...change }));
 });
-test('configuration requires confirmed date, policies, price and gateway credentials', () => {
+test('configuration requires a valid date, price and gateway credentials', () => {
   assert.equal(readConfig({}).ready, false);
   assert.throws(() => readConfig({ WORKSHOP_STARTS_AT: 'not-a-date' }));
   assert.throws(() => readConfig({ TERMS_URL: 'javascript:alert(1)' }));
@@ -176,7 +176,7 @@ test('a missed callback recovers Zoho form data through payment status', async t
   assert.equal(result.data.zohoFields.Email, attendee.email);
 });
 
-test('Zoho form fields are filled before native submission', () => {
+test('Zoho submission fills fields and targets the background frame before submitting', () => {
   const inputs = Object.fromEntries(ZOHO_FIELD_NAMES.map(name => [name, { value: '' }]));
   const fields = { Name_First: 'Test', Email: 'test@example.com', SingleLine1: '{"status":"captured"}' };
   let submitted = 0;
@@ -184,6 +184,7 @@ test('Zoho form fields are filled before native submission', () => {
     elements: { namedItem: name => inputs[name] },
     submit() {
       submitted++;
+      assert.equal(this.target, ZOHO_FORM_TARGET);
       for (const name of ZOHO_FIELD_NAMES) assert.equal(inputs[name].value, fields[name] ?? '');
     },
   }, fields);
@@ -197,5 +198,28 @@ test('security policy allows native submission to the supplied Zoho form', async
   const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   t.after(() => new Promise(resolve => server.close(resolve)));
   const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/workshop');
-  assert.ok(response.headers.get('content-security-policy').includes("form-action 'self' " + new URL(ZOHO_FORM_ACTION).origin));
+  const policy = response.headers.get('content-security-policy');
+  assert.ok(policy.includes("form-action 'self' " + new URL(ZOHO_FORM_ACTION).origin));
+  assert.ok(policy.includes("frame-src https://*.razorpay.com " + new URL(ZOHO_FORM_ACTION).origin));
+});
+
+
+test('configured Razorpay checkout works without optional policy links', async t => {
+  const config = readConfig({
+    WORKSHOP_PRICE_INR: '3000', WORKSHOP_STARTS_AT: '2099-10-28T09:00:00+05:30',
+    RAZORPAY_KEY_ID: 'rzp_test_local', RAZORPAY_KEY_SECRET: 'test-secret', RAZORPAY_WEBHOOK_SECRET: 'webhook-secret',
+  });
+  assert.equal(config.ready, true);
+  assert.deepEqual(config.policies, { terms: null, privacy: null, refund: null });
+  const h = await harness(t, config);
+  const workshop = await h.request('workshop');
+  assert.equal(workshop.data.checkoutEnabled, true);
+  assert.equal(workshop.data.amount, 300000);
+  const order = await h.order();
+  assert.equal(order.amount, 300000);
+  assert.equal((await h.verify(order)).data.status, 'paid');
+});
+
+test('a clock time alone cannot be used as the workshop date', () => {
+  assert.throws(() => readConfig({ WORKSHOP_STARTS_AT: '10:00 AM' }), /ISO date with a timezone/);
 });

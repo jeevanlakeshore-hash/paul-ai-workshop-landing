@@ -22,15 +22,18 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [config, setConfig] = useState(fallback);
   const [configError, setConfigError] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [configRetry, setConfigRetry] = useState(0);
   const [openModule, setOpenModule] = useState('0-0');
   const registration = useRef(null);
   const bio = useRef(null);
   useEffect(() => {
     let cancelled = false;
-    api('workshop').then(data => { if (!cancelled) setConfig(data); }).catch(() => { if (!cancelled) setConfigError(true); });
+    setConfigLoading(true); setConfigError(false);
+    api('workshop').then(data => { if (!cancelled) setConfig(data); }).catch(() => { if (!cancelled) setConfigError(true); }).finally(() => { if (!cancelled) setConfigLoading(false); });
     return () => { cancelled = true; };
-  }, []);
-  function register() { setMenu(false); registration.current.showModal(); }
+  }, [configRetry]);
+  function register() { setMenu(false); setConfigRetry(value => value + 1); registration.current.showModal(); }
   const date = config.startsAt ? new Date(config.startsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'Upcoming date TBA';
 
   return <>
@@ -64,7 +67,7 @@ export default function App() {
       <section className="container final-cta" id="registration"><div className="cta-orbit" aria-hidden="true" /><div><p className="eyebrow">INVEST IN YOUR NEXT CHAPTER</p><h2>The future of your practice<br />starts with <span>one day.</span></h2><p>Bring your curiosity. Leave with a new perspective.</p><div className="cta-actions"><button className="button primary" onClick={register}>Register for the workshop <ArrowRight size={18} /></button><span>{config.amount ? <><strong>{money(config.amount)}</strong> · per attendee</> : 'Registration details coming soon'}</span></div><p className="secure-note"><LockKeyhole size={13} /> Secure payments powered by Razorpay</p>{configError && <p className="notice">Registration details are temporarily unavailable. Please refresh or contact support.</p>}</div><span className="cta-art" aria-hidden="true"><Stethoscope /></span></section>
     </main>
     <footer><div className="container footer-main"><div><Logo footer /><p>Helping healthcare professionals explore<br />what’s possible with AI.</p><div className="host-logo"><img src="/images/lakeshore-logo.png" alt="VPS Lakeshore Hospital" width="155" height="45" loading="lazy" /></div></div><div className="footer-links"><h3>The workshop</h3><a href="#audience">Who it’s for</a><a href="#syllabus">Syllabus</a><a href="#instructor">Your instructor</a><button onClick={register}>Registration</button></div><div className="footer-contact"><h3>Let’s connect</h3><p>Workshop enquiries & support</p><a href={`mailto:${config.supportEmail}`}><Mail size={16} />{config.supportEmail}</a><span><Hospital size={16} />Hosted by VPS Lakeshore Hospital</span></div></div><div className="container footer-bottom"><span>© {new Date().getFullYear()} AI in Clinical Practice. All rights reserved.</span><div>{Object.entries(config.policies).filter(([, url]) => url).map(([key, url]) => <a href={url} key={key} target="_blank" rel="noreferrer">{key === 'terms' ? 'Terms' : key === 'privacy' ? 'Privacy policy' : 'Refund policy'}</a>)}<a href="#top">Back to top ↑</a></div></div></footer>
-    <Registration dialogRef={registration} config={config} />
+    <Registration dialogRef={registration} config={config} configError={configError} configLoading={configLoading} onRetry={() => setConfigRetry(value => value + 1)} />
     <dialog ref={bio} className="bio-dialog" aria-labelledby="bio-title" onClick={e => { if (e.target === e.currentTarget) e.currentTarget.close(); }}><div className="dialog-body"><button className="icon-button close-dialog" onClick={() => bio.current.close()} aria-label="Close instructor biography"><X size={21} /></button><p className="eyebrow">YOUR INSTRUCTOR</p><h2 id="bio-title">Subilal K</h2><p className="teal">Founder of Doc Near U · AI & Automation Expert</p><img src="/images/instructor.jpg" alt="Subilal K" width="130" height="130" /><p>Subilal’s work spans AI, automation, digital marketing and business process optimisation. Over the past ten years, he has helped turn complex, repetitive processes into practical systems.</p><p>His workshop brings that implementation experience to healthcare professionals, with an emphasis on understandable tools, thoughtful evaluation and hands-on learning.</p><button className="button primary" onClick={() => { bio.current.close(); register(); }}>Join the workshop <ArrowRight size={17} /></button></div></dialog>
   </>;
 }

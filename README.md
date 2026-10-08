@@ -26,9 +26,11 @@ Set these **server-only** values in `.env`. Do not commit `.env` or paste secret
 | `WORKSHOP_PRICE_INR` | Final price in rupees, e.g. `2500.00`; this is illustrative, not an agreed fee |
 | `WORKSHOP_STARTS_AT` | Confirmed ISO date and timezone, e.g. `2026-11-15T09:00:00+05:30`; illustrative only |
 | `WORKSHOP_VENUE` | Confirmed venue |
-| `TERMS_URL`, `PRIVACY_URL`, `REFUND_URL` | Your published HTTPS policy URLs |
+| `TERMS_URL`, `PRIVACY_URL`, `REFUND_URL` | Optional published HTTPS policy URLs; displayed when provided |
 | `SUPPORT_EMAIL` | Monitored organiser email; the current default comes from the reference |
 | `PUBLIC_ORIGIN` | Exact frontend origin; production should use HTTPS |
+
+Use a complete date with timezone for `WORKSHOP_STARTS_AT` (for example, `2026-10-28T09:00:00+05:30`); a time such as `10:00 AM` alone is invalid. Checkout requires the date, price, Razorpay keys and webhook secret. Policy links are optional.
 
 Restart the dev command after changing `.env`. The price is the total amount charged, inclusive of any taxes you need to collect. No additional tax is calculated by this starter.
 
@@ -44,15 +46,15 @@ The integration follows [Razorpay Standard Checkout](https://razorpay.com/docs/p
 
 ## Payment flow
 
-1. The browser submits attendee details and policy consent to `POST /api/payments/orders`.
+1. The browser submits attendee details and registration consent to `POST /api/payments/orders`.
 2. The server validates the details, sets the authoritative price, creates a Razorpay order and stores the registration in SQLite.
 3. The browser opens Razorpay Checkout; payment credentials are handled by Razorpay.
 4. `POST /api/payments/verify` verifies the HMAC against the stored order, fetches the payment from Razorpay, and checks the order, currency, amount and captured status.
 5. Signed webhooks also confirm payments if the customer closes the page. Duplicate webhook processing is transactional and idempotent.
 6. `POST /api/payments/status` reconciles pending payments with Razorpay. A secret per-registration token protects status access.
-7. After a verified captured payment, the browser fills and submits a hidden multipart HTML form to the supplied Zoho Forms endpoint. Zoho displays its submission result. The original Zoho field names are preserved: `SingleLine` receives the hospital, `SingleLine2` receives medical specialty, and `SingleLine1` receives JSON containing the captured status, Razorpay payment ID and order ID. No payment-status text field is shown. Pending or rejected payments do not submit to Zoho.
+7. After a verified captured payment, the browser fills and submits a hidden multipart HTML form to the supplied Zoho Forms endpoint. The form targets a hidden, sandboxed iframe, so the website stays open and shows its own payment confirmation and downloadable receipt. The original Zoho field names are preserved: `SingleLine` receives the hospital, `SingleLine2` receives medical specialty, and `SingleLine1` receives JSON containing the captured status, Razorpay payment ID and order ID. No payment-status text field is shown. Pending or rejected payments do not submit to Zoho.
 
-Zoho submission requires the browser to remain open (or return and check payment status after a missed callback). Webhooks confirm payment in SQLite but do not submit the browser form. Zoho receipt is separate from payment verification; inspect Zoho’s result page for validation errors. The HTML endpoint provides no local delivery acknowledgement or deduplication, so check Zoho before manually resubmitting a paid registration. A full integration test needs a Razorpay test payment and confirmation that the corresponding record appears in Zoho.
+Zoho submission requires the browser to remain open (or return and check payment status after a missed callback). Webhooks confirm payment in SQLite but do not submit the browser form. Zoho receipt is separate from payment verification. Browser cross-origin restrictions prevent inspecting its response, so the local confirmation reflects the verified payment and SQLite registration, not an acknowledgement from Zoho. Check the record in Zoho when testing delivery. The HTML endpoint provides no local delivery acknowledgement or deduplication, so check Zoho before manually resubmitting a paid registration. A full integration test needs a Razorpay test payment and confirmation that the corresponding record appears in Zoho.
 
 Pending checkout details survive refreshes in the same browser tab using session storage. Customers can resume the existing order instead of creating another one. Confirmation is downloadable as text; it is not a tax invoice. There is no automated email delivery, refunds UI, registration admin UI or seat-capacity system yet. A tab closed before downloading confirmation requires organiser support, using the Razorpay payment reference.
 

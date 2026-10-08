@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, Download, LockKeyhole, ShieldCheck, X, LoaderCircle, RefreshCw } from 'lucide-react';
 import { api, loadCheckout, money } from './api.js';
 
-import { ZOHO_FORM_ACTION, ZOHO_FIELD_NAMES, submitZohoForm } from '../shared/zoho.js';
+import { ZOHO_FORM_ACTION, ZOHO_FORM_TARGET, ZOHO_FIELD_NAMES, submitZohoForm } from '../shared/zoho.js';
 
 const storageKey = 'clinical-workshop-registration';
 function savedRegistration() {
   try { return JSON.parse(sessionStorage.getItem(storageKey)) || null; } catch { return null; }
 }
 
-export default function Registration({ dialogRef, config }) {
+export default function Registration({ dialogRef, config, configError = false, configLoading = false, onRetry }) {
+  const checkoutAvailable = config.checkoutEnabled && !configError && !configLoading;
+  const policyLinks = Object.entries(config.policies || {}).filter(([, url]) => url);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [stage, setStage] = useState('form');
@@ -77,7 +79,9 @@ export default function Registration({ dialogRef, config }) {
     } catch (err) { reopen(); throw err; }
   }
   async function submit(event) {
-    event.preventDefault(); setBusy(true); setError('');
+    event.preventDefault();
+    if (!checkoutAvailable) return;
+    setBusy(true); setError('');
     const values = Object.fromEntries(new FormData(event.currentTarget));
     try {
       await loadCheckout();
@@ -100,7 +104,8 @@ export default function Registration({ dialogRef, config }) {
   }
 
   return <dialog ref={dialogRef} className="registration-dialog" aria-labelledby="registration-title" onClick={e => { if (e.target === e.currentTarget && !busy) e.currentTarget.close(); }}>
-    <form ref={zohoForm} action={ZOHO_FORM_ACTION} name="form" id="form" method="POST" acceptCharset="UTF-8" encType="multipart/form-data" hidden>
+    <iframe name={ZOHO_FORM_TARGET} title="Registration submission" hidden sandbox="allow-forms allow-scripts allow-same-origin" />
+    <form ref={zohoForm} target={ZOHO_FORM_TARGET} action={ZOHO_FORM_ACTION} name="form" id="form" method="POST" acceptCharset="UTF-8" encType="multipart/form-data" hidden>
       {ZOHO_FIELD_NAMES.map(name => <input key={name} type="hidden" name={name} defaultValue="" />)}
     </form>
     <div className="dialog-body">
@@ -117,7 +122,7 @@ export default function Registration({ dialogRef, config }) {
         <p className="dialog-description">One day of practical AI learning, built around your clinical workflow.</p>
         <div className="order-summary"><span>Workshop registration<small>One attendee · Full-day access</small></span><strong>{config.amount ? money(config.amount) : 'Fee TBA'}</strong></div>
         {config.testMode && <p className="notice">Test checkout is enabled. No real payment will be collected.</p>}
-        {!config.checkoutEnabled && <p className="notice">Paid registration is not open yet. The confirmed date and registration details will appear here when booking opens.</p>}
+        {configLoading ? <p className="notice" role="status">Loading registration details…</p> : configError ? <div className="error-message" role="alert"><p>Unable to load registration details. Please retry in a moment.</p><button type="button" className="button secondary small" onClick={onRetry}>Retry</button></div> : !config.checkoutEnabled && <p className="notice">Paid registration is currently unavailable. Please contact {config.supportEmail} for assistance.</p>}
         {error && <p className="error-message" role="alert">{error}</p>}
         {pending ? <div className="payment-state">
           <ShieldCheck size={32} className="teal" />
@@ -125,9 +130,9 @@ export default function Registration({ dialogRef, config }) {
           <p>If you have paid, check your status before attempting another payment. Confirmation may take a moment.</p>
           <code className="pending-id">{pending.registrationId}</code>
           <button className="button primary full" onClick={checkStatus} disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />} Check payment status</button>
-          <button className="button secondary full" onClick={resume} disabled={busy || !config.checkoutEnabled}>Resume secure checkout <ArrowRight size={17} /></button>
+          <button className="button secondary full" onClick={resume} disabled={busy || !checkoutAvailable}>Resume secure checkout <ArrowRight size={17} /></button>
         </div> : <form onSubmit={submit}>
-          <fieldset disabled={busy || !config.checkoutEnabled}>
+          <fieldset disabled={busy}>
             <div className="form-grid">
               <label>First name<input name="firstName" required maxLength={100} autoComplete="given-name" placeholder="First name" /></label>
               <label>Last name<input name="lastName" required maxLength={100} autoComplete="family-name" placeholder="Last name" /></label>
@@ -138,12 +143,12 @@ export default function Registration({ dialogRef, config }) {
               <label>Hospital / clinic<input name="organization" required maxLength={180} autoComplete="organization" placeholder="Your organisation" /></label>
               <label>Medical specialty<input name="specialty" required maxLength={180} placeholder="e.g. General medicine" /></label>
             </div>
-            <label className="consent"><input name="consent" type="checkbox" required /><span>I accept the {config.policies?.terms ? <a href={config.policies.terms} target="_blank" rel="noreferrer">terms</a> : 'terms'}, {config.policies?.privacy ? <a href={config.policies.privacy} target="_blank" rel="noreferrer">privacy policy</a> : 'privacy policy'} and {config.policies?.refund ? <a href={config.policies.refund} target="_blank" rel="noreferrer">refund policy</a> : 'refund policy'} for registration.</span></label>
-            <button type="submit" className="button primary full">{busy ? <><LoaderCircle size={17} className="spin" /> Opening checkout…</> : <> {config.checkoutEnabled ? `Continue to pay ${money(config.amount)}` : 'Registration opens soon'} <ArrowRight size={17} /></>}</button>
+            <label className="consent"><input name="consent" type="checkbox" required /><span>I agree to share these details with the workshop organisers and Zoho Forms for registration.{policyLinks.length > 0 && <> I accept the {policyLinks.map(([key, url], index) => <span key={key}>{index > 0 ? ', ' : ''}<a href={url} target="_blank" rel="noreferrer">{key === 'terms' ? 'terms' : key === 'privacy' ? 'privacy policy' : 'refund policy'}</a></span>)}.</>}</span></label>
+            <button type="submit" className="button primary full" disabled={busy || !checkoutAvailable}>{busy ? <><LoaderCircle size={17} className="spin" /> Opening checkout…</> : <> {configLoading ? 'Loading registration…' : checkoutAvailable ? `Continue to pay ${money(config.amount)}` : 'Payment unavailable'} <ArrowRight size={17} /></>}</button>
           </fieldset>
         </form>}
         <p className="secure-note"><LockKeyhole size={13} /> Secure checkout by Razorpay · UPI, cards & more</p>
-        <p className="fine-print">After payment is verified, your registration details will be submitted to Zoho Forms and its confirmation page will open.</p>
+        <p className="fine-print">After payment is verified, your confirmation will appear here. You can save a copy for your records.</p>
       </>}
     </div>
   </dialog>;

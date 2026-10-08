@@ -21,7 +21,7 @@ export function readConfig(env = process.env) {
     production: env.NODE_ENV === 'production',
     trustProxy: Number(env.TRUST_PROXY_HOPS || 0),
   };
-  config.ready = Boolean(config.amount && config.startsAt && config.keyId && config.keySecret && config.webhookSecret && Object.values(config.policies).every(Boolean));
+  config.ready = Boolean(config.amount && config.startsAt && config.keyId && config.keySecret && config.webhookSecret);
   return config;
 }
 
