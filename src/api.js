@@ -1,5 +1,5 @@
 export async function api(path, body) {
-  const response = await fetch(`/api/${path}`, {
+  const response = await fetch(`${import.meta.env.BASE_URL}api/${path}`, {
     method: body ? 'POST' : 'GET',
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,

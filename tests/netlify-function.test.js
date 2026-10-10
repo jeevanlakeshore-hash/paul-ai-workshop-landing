@@ -28,7 +28,7 @@ test('deployed function retains the uncached Blobs endpoint for strong reads', a
     }
     return new Response(null, { status: 200, headers: { etag: 'revision-1' } });
   };
-  for (const path of ['/api/workshop', '/.netlify/functions/api/workshop']) {
+  for (const path of ['/api/workshop', '/ai-workshop/api/workshop', '/.netlify/functions/api/workshop']) {
     const response = await handler(new Request(`https://example.com${path}`, { headers: { origin: 'https://example.com', 'x-nf-client-connection-ip': '192.0.2.1' } }));
     assert.equal(response.status, 200);
     const config = await response.json();
@@ -43,11 +43,17 @@ test('deployed function retains the uncached Blobs endpoint for strong reads', a
     assert.equal(response.status, 403);
     assert.equal((await response.json()).error, 'Invalid registration access.');
   }
+  // The main site proxies /ai-workshop to this Netlify host, so its origin differs from the request URL.
+  const proxied = await handler(new Request('https://example.netlify.app/ai-workshop/api/payments/status', {
+    method: 'POST', headers: { origin: 'https://www.vpslakeshorehospital.com', 'content-type': 'application/json', 'x-nf-client-connection-ip': '192.0.2.1' }, body: '{}',
+  }));
+  assert.equal(proxied.status, 403);
+  assert.equal((await proxied.json()).error, 'Invalid registration access.');
   const foreign = await handler(new Request('https://example.com/api/payments/orders', {
     method: 'POST', headers: { origin: 'https://untrusted.example', 'content-type': 'application/json' }, body: '{}',
   }));
   assert.equal(foreign.status, 403);
   assert.equal((await foreign.json()).error, 'This origin is not allowed.');
-  assert.equal(reads.length, 2);
+  assert.equal(reads.length, 3);
   assert.ok(reads.every(url => url.startsWith('https://uncached.example.com/')));
 });

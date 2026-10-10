@@ -12,8 +12,26 @@
   node_bundler = "esbuild"
   external_node_modules = ["serverless-http", "express", "express-rate-limit", "helmet"]
 
+# The build uses base "/ai-workshop/". These rules let the site work whether the main domain's
+# proxy keeps the /ai-workshop prefix or strips it, and when the netlify.app URL is opened directly.
+[[redirects]]
+  from = "/ai-workshop/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/ai-workshop"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ai-workshop/*"
+  to = "/:splat"
+  status = 200
