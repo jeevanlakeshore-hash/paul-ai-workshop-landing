@@ -1,17 +1,27 @@
 import serverless from 'serverless-http';
-import { connectLambda, getStore } from '@netlify/blobs';
+import { getStore } from '@netlify/blobs';
 import { createApp } from '../../server/app.js';
 import { createBlobStore } from '../../server/blob-store.js';
 import { readConfig } from '../../server/config.js';
 import { createGateway } from '../../server/gateway.js';
 import { createBlobRateLimit } from '../../server/blob-rate-limit.js';
 
-export async function handler(event, context) {
-  connectLambda(event);
+export default async function handler(request) {
+  const url = new URL(request.url);
+  const event = {
+    path: url.pathname,
+    httpMethod: request.method,
+    headers: Object.fromEntries(request.headers),
+    body: ['GET', 'HEAD'].includes(request.method) ? '' : await request.text(),
+    queryStringParameters: Object.fromEntries(url.searchParams),
+    isBase64Encoded: false,
+  };
   const config = readConfig({
     ...process.env,
     NODE_ENV: 'production',
-    PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN || process.env.URL,
+    // The frontend and API share this Netlify host. A stale origin from a
+    // previous deployment must not reject the current site's checkout.
+    PUBLIC_ORIGIN: url.origin,
     // The adapter supplies the client IP; do not trust caller proxy headers.
     TRUST_PROXY_HOPS: '0',
   });
@@ -25,5 +35,12 @@ export async function handler(event, context) {
     req.socket.remoteAddress = ip;
     req.ip = ip;
   } });
-  return run({ ...event, path }, context);
+  const result = await run({ ...event, path }, {});
+  const headers = new Headers(result.headers);
+  for (const [name, values] of Object.entries(result.multiValueHeaders || {})) {
+    headers.delete(name);
+    for (const value of values) headers.append(name, value);
+  }
+  const body = result.isBase64Encoded ? Buffer.from(result.body, 'base64') : result.body;
+  return new Response(request.method === 'HEAD' ? null : body, { status: result.statusCode, headers });
 }

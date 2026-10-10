@@ -23,7 +23,6 @@ export function createApp({ config, store, gateway, staticDir, apiLimiter }) {
     } },
     strictTransportSecurity: config.production ? undefined : false,
   }));
-  if (apiLimiter) app.use('/api', apiLimiter);
   app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '256kb' }), async (req, res) => {
@@ -56,6 +55,8 @@ export function createApp({ config, store, gateway, staticDir, apiLimiter }) {
     next();
   });
   app.get('/api/workshop', (_req, res) => res.json(publicConfig(config)));
+  // Loading public workshop details must not depend on payment storage.
+  if (apiLimiter) app.use('/api/payments', apiLimiter);
   const paymentLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
     message: { error: 'Too many requests. Please wait a minute and try again.' } });
   app.use('/api/payments', paymentLimiter);

@@ -6,7 +6,7 @@ import { HttpError } from './payments.js';
 export function createBlobRateLimit(blobs, now = Date.now) {
   return async (req, res, next) => {
     try {
-      const order = req.path === '/payments/orders';
+      const order = req.path === '/orders' || req.path === '/payments/orders';
       const limit = order ? 5 : 30;
       const identity = createHash('sha256').update(req.ip || 'unknown').digest('hex');
       const key = `limits/${order ? 'orders' : 'api'}/${identity}`;
