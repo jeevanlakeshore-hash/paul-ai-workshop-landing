@@ -114,7 +114,7 @@ export default function Registration({ dialogRef, config, configError = false, c
       <h2 id="registration-title">{stage === 'success' ? 'You’re registered.' : stage === 'pending' ? 'Payment confirmation' : 'Join the workshop.'}</h2>
       {stage === 'success' ? <div className="payment-state">
         <span className="success-icon"><Check size={32} /></span>
-        <p>Your payment of <strong>{money(receipt.amount)}</strong> has been verified. Your workshop registration is confirmed.</p>
+        <p>Your payment of <strong>{money(receipt.amount)}</strong> has been verified. Your registration details have been submitted to Zoho Forms.</p>
         <div className="receipt"><span>Registration reference</span><code>{receipt.registrationId}</code><span>Payment reference</span><code>{receipt.paymentId}</code></div>
         <button className="button primary full" onClick={downloadReceipt}><Download size={17} /> Save confirmation</button>
         <p className="fine-print">Keep this confirmation for your records. For joining details, contact {config.supportEmail}.</p>

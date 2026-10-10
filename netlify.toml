@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "24"
+  # These values are public settings or local server defaults, not credentials.
+  SECRETS_SCAN_OMIT_KEYS = "DATABASE_PATH,PORT,HOST,WORKSHOP_VENUE,WORKSHOP_STARTS_AT,WORKSHOP_PRICE_INR,SUPPORT_EMAIL,PUBLIC_ORIGIN,TERMS_URL,PRIVACY_URL,REFUND_URL,TRUST_PROXY_HOPS"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["serverless-http", "express", "express-rate-limit", "helmet"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true

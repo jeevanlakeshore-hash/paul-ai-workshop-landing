@@ -6,7 +6,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { publicConfig } from './config.js';
 import { HttpError, validSignature, validateRegistration, tokenHash, assertCaptured } from './payments.js';
 
-export function createApp({ config, store, gateway, staticDir }) {
+export function createApp({ config, store, gateway, staticDir, apiLimiter }) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', config.trustProxy);
@@ -23,9 +23,10 @@ export function createApp({ config, store, gateway, staticDir }) {
     } },
     strictTransportSecurity: config.production ? undefined : false,
   }));
+  if (apiLimiter) app.use('/api', apiLimiter);
   app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
-  app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '256kb' }), (req, res) => {
+  app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '256kb' }), async (req, res) => {
     if (!config.webhookSecret) throw new HttpError(503, 'Webhooks are not configured.');
     if (!Buffer.isBuffer(req.body) || !validSignature(req.body, req.get('x-razorpay-signature'), config.webhookSecret)) {
       throw new HttpError(400, 'Invalid webhook signature.');
@@ -35,12 +36,12 @@ export function createApp({ config, store, gateway, staticDir }) {
     if (!['payment.captured', 'order.paid'].includes(event.event)) return res.json({ received: true });
     const payment = event.payload?.payment?.entity;
     if (!payment?.order_id || !payment.id) throw new HttpError(400, 'Missing payment entity.');
-    const registration = store.byOrder(payment.order_id);
+    const registration = await store.byOrder(payment.order_id);
     // Events for other products in the same Razorpay account are intentionally ignored.
     if (!registration) return res.json({ received: true });
     const eventId = createHash('sha256').update(req.body).digest('hex');
-    store.processEvent(eventId, () => {
-      if (assertCaptured(payment, registration)) store.markPaid(registration.id, payment.id);
+    await store.processEvent(eventId, () => {
+      if (assertCaptured(payment, registration)) return store.markPaid(registration.id, payment.id);
     });
     res.json({ received: true });
   });
@@ -67,22 +68,22 @@ export function createApp({ config, store, gateway, staticDir }) {
     const token = randomBytes(32).toString('hex');
     const order = await gateway.createOrder(config.amount, id);
     if (typeof order.id !== 'string' || order.amount !== config.amount || order.currency !== 'INR') throw new HttpError(502, 'Unexpected payment order. Please contact support.');
-    store.insert({ id, token_hash: tokenHash(token), order_id: order.id, amount: config.amount, attendee });
+    await store.insert({ id, token_hash: tokenHash(token), order_id: order.id, amount: config.amount, attendee });
     res.status(201).json({ registrationId: id, token, orderId: order.id, keyId: config.keyId, amount: config.amount, currency: 'INR' });
   });
 
-  function authorize(body) {
+  async function authorize(body) {
     if (typeof body?.registrationId !== 'string' || typeof body?.token !== 'string' || body.token.length !== 64) throw new HttpError(403, 'Invalid registration access.');
-    const registration = store.get(body.registrationId);
+    const registration = await store.get(body.registrationId);
     if (!registration || registration.token_hash !== tokenHash(body.token)) throw new HttpError(403, 'Invalid registration access.');
     return registration;
   }
-  function result(registration) {
-    const current = store.get(registration.id);
+  async function result(registration) {
+    const current = await store.get(registration.id);
     return { status: current.status, registrationId: current.id, paymentId: current.payment_id, amount: current.amount, currency: 'INR', zohoFields: zohoFields(current) };
   }
   app.post('/api/payments/verify', async (req, res) => {
-    const registration = authorize(req.body);
+    const registration = await authorize(req.body);
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     if (razorpay_order_id !== registration.order_id || typeof razorpay_payment_id !== 'string' || !/^pay_[a-zA-Z0-9]+$/.test(razorpay_payment_id)
       || !validSignature(`${registration.order_id}|${razorpay_payment_id}`, razorpay_signature, config.keySecret)) {
@@ -90,18 +91,18 @@ export function createApp({ config, store, gateway, staticDir }) {
     }
     const payment = await gateway.getPayment(razorpay_payment_id);
     if (payment.id !== razorpay_payment_id) throw new HttpError(400, 'Payment identifier mismatch.');
-    if (assertCaptured(payment, registration)) store.markPaid(registration.id, payment.id);
-    res.json(result(registration));
+    if (assertCaptured(payment, registration)) await store.markPaid(registration.id, payment.id);
+    res.json(await result(registration));
   });
   app.post('/api/payments/status', async (req, res) => {
-    const registration = authorize(req.body);
+    const registration = await authorize(req.body);
     if (registration.status !== 'paid') {
       const payments = await gateway.getOrderPayments(registration.order_id);
       for (const payment of payments.items || []) {
-        if (assertCaptured(payment, registration)) { store.markPaid(registration.id, payment.id); break; }
+        if (assertCaptured(payment, registration)) { await store.markPaid(registration.id, payment.id); break; }
       }
     }
-    res.json(result(registration));
+    res.json(await result(registration));
   });
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'API route not found.')));
   if (staticDir) app.use(express.static(staticDir));

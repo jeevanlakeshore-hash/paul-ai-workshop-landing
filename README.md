@@ -58,7 +58,21 @@ Zoho submission requires the browser to remain open (or return and check payment
 
 Pending checkout details survive refreshes in the same browser tab using session storage. Customers can resume the existing order instead of creating another one. Confirmation is downloadable as text; it is not a tax invoice. There is no automated email delivery, refunds UI, registration admin UI or seat-capacity system yet. A tab closed before downloading confirmation requires organiser support, using the Razorpay payment reference.
 
-## Build and host
+## Deploy entirely on Netlify
+
+The included `netlify.toml` publishes the Vite frontend and routes `/api/*` to a Netlify Function. The function uses strongly consistent Netlify Blobs for persistent registrations, captured payments and webhook completion records. Local development continues to use SQLite. No separate backend host is needed.
+
+Keep `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `WORKSHOP_PRICE_INR` and a future timezone-aware `WORKSHOP_STARTS_AT` configured in Netlify with **Functions** scope. Set `PUBLIC_ORIGIN` to the exact public frontend origin; otherwise the function uses Netlify's site URL. Optional venue, support and policy settings also need Functions scope. Keep credentials out of `VITE_` variables. `HOST`, `PORT`, `DATABASE_PATH` and `TRUST_PROXY_HOPS` are local-server settings and can be removed from Netlify.
+
+Secret scanning stays enabled. Only public configuration and local-server defaults are excluded from value scanning; Razorpay credentials are still scanned.
+
+Set the Razorpay webhook URL to `https://YOUR-NETLIFY-DOMAIN/api/payments/webhook`, subscribing to `payment.captured` and `order.paid`. Enable automatic capture. First use test credentials: complete a test payment, confirm the payment is captured, and check that the attendee and payment references appear in Zoho. Also test cancelled checkout and pending-payment recovery. Publish the committed code and settings before running this live check.
+
+Zoho's supplied HTML endpoint is submitted by the browser after server verification. The browser must remain open or return to check payment status. Its cross-origin response cannot be inspected; a payment confirmation does not prove Zoho delivery. Guaranteed background delivery would require a Zoho API integration with organiser credentials.
+
+Production and deploy-preview payment storage are isolated by Netlify deploy context. Use test Razorpay credentials for previews. Netlify's built-in storage credentials are supplied to the function automatically.
+
+## Build and host on a separate Node server (optional)
 
 ```powershell
 npm.cmd test

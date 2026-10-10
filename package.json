@@ -3,7 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "engines": { "node": ">=24.0.0" },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "concurrently -k -n api,vite \"node --watch --env-file-if-exists=.env server/index.js\" \"vite --host 127.0.0.1\"",
     "build": "vite build",
@@ -14,12 +16,14 @@
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.2.0",
     "@fontsource-variable/manrope": "^5.2.0",
+    "@netlify/blobs": "^11.1.4",
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.0",
     "helmet": "^8.1.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "serverless-http": "^4.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",

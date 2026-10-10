@@ -6,3 +6,5 @@ dist/
 data/
 *.log
 reference.html
+
+.npm-cache/
